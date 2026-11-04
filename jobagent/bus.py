@@ -52,7 +52,8 @@ class RedisBus:
     def consume(self, streams: list[str], group: str, handler: Handler, stop: threading.Event | None = None) -> None:
         for s in streams:
             self._ensure_group(s, group)
-        consumer = f"{group}-{socket.gethostname()}-{os.getpid()}"
+        # Stable per container, so messages left unacknowledged by a crash are picked up again on restart.
+        consumer = f"{group}-{socket.gethostname()}"
         # First re-deliver anything this consumer read but never acknowledged (e.g. after a crash), then new messages.
         cursors = {s: "0" for s in streams}
         log.info("%s listening on %s", group, ", ".join(streams))
