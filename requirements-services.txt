@@ -1,0 +1,6 @@
+# Extra packages for the microservices (docker compose). The CLI only needs requirements.txt.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+redis>=5.0
+streamlit>=1.38
+pandas>=2.0

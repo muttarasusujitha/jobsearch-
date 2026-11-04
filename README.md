@@ -10,8 +10,32 @@ A Python tool that finds jobs, applies to them for you, and tracks what happens 
 | Matcher | Scores each job 0–100 on title, skills, location and experience, and skips bad fits |
 | Applier | Fills and submits applications: LinkedIn Easy Apply, the Naukri apply button and chatbot, Wellfound, Greenhouse/Lever/Ashby forms, and the multi-page Workday flow |
 | Tracker | Reads your inbox over IMAP and moves each application through Applied → Viewed → Shortlisted → Interview → Offer / Rejected |
+| Startup finder | Finds Bangalore and Hyderabad startups with a public careers board (Greenhouse, Lever, Ashby) and adds them to discovery automatically |
 
-The **dashboard** (Streamlit) shows the counts, a review queue, jobs that need your attention, application tracking with editable statuses, per-platform stats and an activity log. It also has buttons to run each agent.
+The **dashboard** (Streamlit) shows the counts, a review queue, jobs that need your attention, application tracking with editable statuses, per-platform stats, the startups found, and buttons to run each agent.
+
+## Two ways to run it
+
+| | Single process (CLI) | Microservices (Docker Compose) |
+|---|---|---|
+| Start | `python -m jobagent dashboard` | `docker compose up -d --build` |
+| Needs | Python 3.11+ | Docker Desktop |
+| Browser | Opens on your desktop | Runs in a container. Watch and control it at http://localhost:6080 |
+| Scheduling | `python -m jobagent run --loop-minutes 180` | Built-in `scheduler` service |
+| Guide | below | [docs/MICROSERVICES.md](docs/MICROSERVICES.md) |
+
+Both use the same config files and the same rules.
+
+## Bangalore and Hyderabad, city-wide
+
+`locations = ["Bangalore", "Hyderabad", "Remote"]` matches every area of both cities: Whitefield, Electronic City, ORR, HSR Layout, Koramangala, HITEC City, Gachibowli, Madhapur, Financial District and more. Spellings like "Bengaluru" and "Secunderabad" count too.
+
+The **startup finder** (`python -m jobagent find-startups`, or the 🏙️ button in the dashboard) checks:
+
+1. the starter list in `config/startups.toml` (about 80 Bangalore and Hyderabad startups, edit freely), and
+2. every company it sees in Bangalore or Hyderabad job posts on LinkedIn, Naukri, Wellfound and the other sites.
+
+For each company it tries likely board names on Greenhouse, Lever and Ashby. It keeps a board only if it has open jobs in India, which stops a same-named foreign company from being picked up. Found boards are searched on every Discover run. Results are cached for 14 days and listed in the dashboard's **Startups** tab.
 
 ## Setup (on your own computer)
 

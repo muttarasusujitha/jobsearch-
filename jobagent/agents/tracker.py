@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parsedate_to_datetime
+from typing import Iterator
 
 from .. import db
 from ..config import Settings
@@ -141,17 +142,15 @@ def process_message(conn: sqlite3.Connection, message_id: str, subject: str, sen
     return updated
 
 
-def run_tracker(settings: Settings) -> dict[str, int]:
+def fetch_messages(settings: Settings) -> Iterator[dict[str, str]]:
+    """Read recent emails over IMAP (read-only, they stay unread). Yields plain dicts."""
     cfg = settings.email
     if not cfg.get("enabled"):
         log.info("Email tracking disabled in config.")
-        return {}
+        return
     password = os.environ.get(cfg.get("password_env", "JOBAGENT_EMAIL_PASSWORD"), "")
     if not password:
         raise RuntimeError(f"Set the {cfg.get('password_env', 'JOBAGENT_EMAIL_PASSWORD')} environment variable (an app password).")
-
-    conn = db.connect()
-    stats: dict[str, int] = {"scanned": 0, "updated": 0}
     since = (datetime.now() - timedelta(days=int(cfg.get("lookback_days", 14)))).strftime("%d-%b-%Y")
 
     imap = imaplib.IMAP4_SSL(cfg.get("imap_host", "imap.gmail.com"))
@@ -161,29 +160,41 @@ def run_tracker(settings: Settings) -> dict[str, int]:
         typ, data = imap.search(None, f'(SINCE "{since}")')
         if typ != "OK":
             raise RuntimeError(f"IMAP search failed: {typ}")
-        ids = data[0].split()[-int(cfg.get("max_messages", 300)):]
-        for num in ids:
+        for num in data[0].split()[-int(cfg.get("max_messages", 300)):]:
             typ, parts = imap.fetch(num, "(BODY.PEEK[])")
             if typ != "OK" or not parts or not isinstance(parts[0], tuple):
                 continue
             msg = email.message_from_bytes(parts[0][1])
-            message_id = (msg.get("Message-ID") or f"imap-{num.decode()}").strip()
-            subject = _decode(msg.get("Subject"))
-            sender = _decode(msg.get("From"))
             try:
                 received = parsedate_to_datetime(msg.get("Date", "")).isoformat()
             except Exception:
                 received = ""
-            stats["scanned"] += 1
-            new_status = process_message(conn, message_id, subject, sender, _body(msg), received)
-            if new_status:
-                stats["updated"] += 1
-                stats[new_status] = stats.get(new_status, 0) + 1
-                log.info("Email '%s' -> %s", subject[:80], new_status)
+            yield {
+                "message_id": (msg.get("Message-ID") or f"imap-{num.decode()}").strip(),
+                "subject": _decode(msg.get("Subject")),
+                "sender": _decode(msg.get("From")),
+                "body": _body(msg)[:10000],
+                "received": received,
+            }
     finally:
         try:
             imap.logout()
         except Exception:
             pass
+
+
+def run_tracker(settings: Settings) -> dict[str, int]:
+    """CLI mode: classify emails and update the local database."""
+    conn = db.connect()
+    stats: dict[str, int] = {"scanned": 0, "updated": 0}
+    try:
+        for m in fetch_messages(settings):
+            stats["scanned"] += 1
+            new_status = process_message(conn, m["message_id"], m["subject"], m["sender"], m["body"], m["received"])
+            if new_status:
+                stats["updated"] += 1
+                stats[new_status] = stats.get(new_status, 0) + 1
+                log.info("Email '%s' -> %s", m["subject"][:80], new_status)
+    finally:
         conn.close()
     return stats

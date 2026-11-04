@@ -21,8 +21,9 @@ resume_path = "resume.pdf"
 # Big companies use their own titles, e.g. Amazon "Software Development Engineer",
 # TCS/Infosys "Systems Engineer", Accenture "Application Developer". Add the ones you want.
 roles = ["Backend Developer", "Python Developer", "Software Engineer", "Software Development Engineer", "Application Developer"]
-# Use "Remote" to include remote jobs.
-locations = ["Bangalore", "Remote"]
+# Use "Remote" to include remote jobs. "Bangalore" and "Hyderabad" match the whole city:
+# Whitefield, Electronic City, ORR, HSR, Koramangala / HITEC City, Gachibowli, Madhapur...
+locations = ["Bangalore", "Hyderabad", "Remote"]
 experience_years = 2
 # Every one of these must appear in the title or description.
 must_have_keywords = ["python"]
@@ -176,6 +177,19 @@ max_pages = 2
 
 [platforms.wellfound]
 max_pages = 1
+
+[startups]
+# The startup finder checks config/startups.toml plus every company seen in job posts in
+# these cities, and adds the ones with a Greenhouse / Lever / Ashby board to discovery.
+cities = ["bangalore", "hyderabad"]
+
+[schedule]
+# Used by the scheduler service (docker compose). 0 turns a job off.
+discover_every_minutes = 180
+apply_every_minutes = 120
+track_every_minutes = 60
+find_startups_every_hours = 24
+run_on_start = false
 
 [email]
 # Gmail: turn on 2-step verification, create an App Password, and put it in the

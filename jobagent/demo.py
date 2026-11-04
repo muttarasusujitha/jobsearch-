@@ -45,6 +45,18 @@ PATHS = {
 }
 
 
+# Sample startup-finder results (made up for the demo; real results come from the finder).
+DEMO_STARTUPS = [
+    ("Razorpay", "Bangalore", "greenhouse", "razorpay"), ("Postman", "Bangalore", "greenhouse", "postman"),
+    ("Groww", "Bangalore", "greenhouse", "groww"), ("CRED", "Bangalore", "lever", "cred"),
+    ("Meesho", "Bangalore", "lever", "meesho"), ("Atlan", "Bangalore", "ashby", "atlan"),
+    ("Hasura", "Bangalore", "lever", "hasura"), ("Sarvam AI", "Bangalore", "ashby", "sarvam"),
+    ("Darwinbox", "Hyderabad", "lever", "darwinbox"), ("Zenoti", "Hyderabad", "greenhouse", "zenoti"),
+    ("Keka", "Hyderabad", None, None), ("Skyroot Aerospace", "Hyderabad", None, None),
+    ("HighRadius", "Hyderabad", None, None), ("Zerodha", "Bangalore", None, None),
+]
+
+
 def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
@@ -108,5 +120,12 @@ def seed(path: Path, n: int = 220, rng_seed: int = 7) -> None:
             "INSERT INTO events (job_id, status, note, created_at) VALUES (?, ?, ?, ?)",
             [(job_id, s, note, _iso(ts)) for s, note, ts in events],
         )
+    for name, city, ats, slug in DEMO_STARTUPS:
+        open_jobs = rnd.randint(4, 60) if ats else 0
+        db.upsert_company(conn, {
+            "name": name, "city": city, "source": rnd.choice(["seed", "jobs"]), "ats": ats, "slug": slug,
+            "open_jobs": open_jobs, "local_jobs": rnd.randint(1, open_jobs) if ats else 0,
+            "checked_at": _iso(now - timedelta(hours=rnd.uniform(1, 72))),
+        })
     conn.commit()
     conn.close()

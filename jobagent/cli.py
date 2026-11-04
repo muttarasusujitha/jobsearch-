@@ -80,6 +80,12 @@ def cmd_track(args: argparse.Namespace) -> None:
     print(run_tracker(load_settings(args.config)))
 
 
+def cmd_find_startups(args: argparse.Namespace) -> None:
+    from .agents import run_finder
+
+    print(run_finder(load_settings(args.config), args.city))
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     from .agents import run_applications, run_discovery, run_tracker
 
@@ -168,6 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("track", help="Read your inbox and update statuses")
     s.set_defaults(func=cmd_track)
+
+    s = sub.add_parser("find-startups", help="Find Bangalore/Hyderabad startups with public careers boards")
+    s.add_argument("--city", action="append", choices=["bangalore", "hyderabad"], help="Limit to a city (repeatable)")
+    s.set_defaults(func=cmd_find_startups)
 
     s = sub.add_parser("run", help="Discover, apply and track in one go")
     add_common(s)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,8 +16,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ui  # noqa: E402
+from data import get_backend  # noqa: E402
 from jobagent import db  # noqa: E402
-from jobagent.config import DATA_DIR, ConfigError, load_settings  # noqa: E402
+from jobagent.apiclient import ApiError  # noqa: E402
+from jobagent.config import ConfigError, load_settings  # noqa: E402
 
 st.set_page_config(page_title="Job Agent", page_icon="💼", layout="wide", initial_sidebar_state="expanded")
 st.markdown(ui.CSS, unsafe_allow_html=True)
@@ -26,10 +27,9 @@ st.markdown(ui.CSS, unsafe_allow_html=True)
 DEMO = os.environ.get("JOBAGENT_DEMO") == "1"
 TRACKED = ["applied", "viewed", "shortlisted", "interview", "offer", "rejected"]
 BOARD = ["applied", "viewed", "shortlisted", "interview", "offer", "rejected"]
-LOG_FILE = DATA_DIR / "agent.log"
 
-# A fresh connection per run: Streamlit reruns can happen on different threads.
-conn = db.connect()
+# A fresh backend per run: Streamlit reruns can happen on different threads.
+backend = get_backend()
 
 try:
     settings = load_settings()
@@ -40,48 +40,50 @@ except ConfigError as exc:
 
 
 # ------------------------------------------------------------------ data
+JOB_FRAME_COLS = ["id", "platform", "title", "company", "location", "score", "status", "match_reasons", "url",
+                  "discovered_at", "applied_at", "status_updated_at"]
+
+
 def load_jobs() -> pd.DataFrame:
-    df = pd.read_sql_query(
-        "SELECT id, platform, title, company, location, score, status, match_reasons, url, "
-        "discovered_at, applied_at, status_updated_at FROM jobs ORDER BY status_updated_at DESC",
-        conn,
-    )
+    df = pd.DataFrame(backend.jobs(), columns=JOB_FRAME_COLS)
     for col in ("discovered_at", "applied_at", "status_updated_at"):
         df[col] = pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_convert(None)
+    df["score"] = pd.to_numeric(df["score"], errors="coerce")
     return df
 
 
 def last_notes(ids: list[int]) -> dict[int, str]:
-    if not ids:
-        return {}
-    marks = ",".join("?" * len(ids))
-    rows = conn.execute(
-        f"SELECT job_id, note FROM events WHERE id IN (SELECT MAX(id) FROM events WHERE job_id IN ({marks}) GROUP BY job_id)",
-        ids,
-    ).fetchall()
-    return {r["job_id"]: r["note"] for r in rows}
+    return backend.last_notes(ids)
 
 
-def run_agent(*args: str) -> None:
+def run_agent(agent: str, dry_run: bool = False, limit: int | None = None) -> None:
     if DEMO:
         st.toast("Demo mode: agents are disabled.", icon="🧪")
         return
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(LOG_FILE, "a", encoding="utf-8") as fh:
-        subprocess.Popen([sys.executable, "-m", "jobagent", *args], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
-    st.toast(f"Started: {' '.join(args)}", icon="🚀")
+    try:
+        st.toast(backend.run(agent, dry_run=dry_run, limit=limit), icon="🚀")
+    except ApiError as exc:
+        st.error(str(exc))
+
+
+def set_status(job_id: int, status: str, note: str) -> None:
+    backend.set_status(int(job_id), status, note)
 
 
 def set_many(ids: list[int], status: str, note: str) -> None:
     for job_id in ids:
-        db.set_status(conn, int(job_id), status, note)
+        set_status(int(job_id), status, note)
 
 
 def utc_naive(dt: datetime) -> pd.Timestamp:
     return pd.Timestamp(dt.astimezone(timezone.utc).replace(tzinfo=None))
 
 
-all_jobs = load_jobs()
+try:
+    all_jobs = load_jobs()
+except ApiError as exc:
+    st.error(f"Can't reach the API service. Is `docker compose up` running?  \n{exc}", icon="🔌")
+    st.stop()
 
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
@@ -100,9 +102,11 @@ with st.sidebar:
         run_agent("track")
     c3, c4 = st.columns(2)
     if c3.button("🧪 Dry run", use_container_width=True):
-        run_agent("apply", "--dry-run", "--limit", "3")
+        run_agent("apply", dry_run=True, limit=3)
     if c4.button("♻️ Re-score", use_container_width=True):
-        run_agent("match", "--rescore")
+        run_agent("rescore")
+    if st.button("🏙️  Find BLR / HYD startups", use_container_width=True):
+        run_agent("find_startups")
     if st.button("🔄  Refresh data", use_container_width=True):
         st.rerun()
 
@@ -113,9 +117,11 @@ with st.sidebar:
 
     st.markdown('<div class="side-label">Agent log</div>', unsafe_allow_html=True)
     with st.expander("Latest output", expanded=False):
-        if LOG_FILE.exists():
-            lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
-            st.code("\n".join(lines) or "(empty)", language="text")
+        tail = backend.log_tail()
+        if tail is not None:
+            st.code(tail or "(empty)", language="text")
+        elif backend.mode == "services":
+            st.caption("Services mode: run `docker compose logs -f` to see every service's log.")
         else:
             st.caption("No runs yet.")
 
@@ -136,7 +142,7 @@ daily_goal = int(settings.limits.get("daily_max", 25)) if settings else 25
 
 # ------------------------------------------------------------------ header
 name = settings.personal.get("first_name", "") if settings else ""
-last_event = conn.execute("SELECT MAX(created_at) FROM events").fetchone()[0]
+last_event = backend.last_activity()
 subtitle = f"Last activity {ui.ago(last_event)}" if last_event else "No activity yet"
 if settings:
     subtitle += f" · {'Review mode on' if settings.review_mode else 'Auto-apply on'}"
@@ -157,7 +163,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tabs = st.tabs(["📊 Overview", "🗂️ Pipeline", "✅ Review", "⚠️ Attention", "📬 Applications", "🔍 Explore", "⚙️ Settings"])
+tabs = st.tabs(["📊 Overview", "🗂️ Pipeline", "✅ Review", "⚠️ Attention", "📬 Applications", "🔍 Explore", "🏙️ Startups", "⚙️ Settings"])
 
 # ------------------------------------------------------------------ overview
 with tabs[0]:
@@ -240,11 +246,9 @@ with tabs[0]:
 
             with st.container(border=True):
                 st.markdown(ui.section("Recent updates", "from email and agents"), unsafe_allow_html=True)
-                ev = pd.read_sql_query(
-                    "SELECT e.created_at, e.status, e.note, j.platform, j.title, j.company FROM events e JOIN jobs j ON j.id = e.job_id "
-                    "WHERE e.status IN ('applied','viewed','shortlisted','interview','offer','rejected','needs_attention') "
-                    "ORDER BY e.id DESC LIMIT 7",
-                    conn,
+                ev = pd.DataFrame(
+                    backend.events(["applied", "viewed", "shortlisted", "interview", "offer", "rejected", "needs_attention"], 7),
+                    columns=["created_at", "status", "note", "platform", "title", "company"],
                 )
                 if ev.empty:
                     st.caption("No updates yet.")
@@ -286,10 +290,10 @@ with tabs[2]:
             card, actions = st.columns([6, 1], vertical_alignment="center")
             card.markdown(ui.job_card(r, show_score=True), unsafe_allow_html=True)
             if actions.button("Approve", key=f"ap{r['id']}", type="primary", use_container_width=True):
-                db.set_status(conn, int(r["id"]), "approved", "Approved in dashboard")
+                set_status(int(r["id"]), "approved", "Approved in dashboard")
                 st.rerun()
             if actions.button("Skip", key=f"sk{r['id']}", use_container_width=True):
-                db.set_status(conn, int(r["id"]), "skipped", "Skipped in dashboard")
+                set_status(int(r["id"]), "skipped", "Skipped in dashboard")
                 st.rerun()
 
     approved = jobs[jobs["status"] == "approved"]
@@ -313,14 +317,14 @@ with tabs[3]:
             card, actions = st.columns([6, 1], vertical_alignment="center")
             card.markdown(ui.job_card(r, note=notes.get(int(r["id"]), "")), unsafe_allow_html=True)
             if actions.button("I applied", key=f"done{r['id']}", type="primary", use_container_width=True):
-                db.set_status(conn, int(r["id"]), "applied", "Applied manually")
+                set_status(int(r["id"]), "applied", "Applied manually")
                 st.rerun()
             a, b = actions.columns(2)
             if a.button("↻", key=f"retry{r['id']}", help="Retry", use_container_width=True):
-                db.set_status(conn, int(r["id"]), "approved", "Retry from dashboard")
+                set_status(int(r["id"]), "approved", "Retry from dashboard")
                 st.rerun()
             if b.button("✕", key=f"skip{r['id']}", help="Skip", use_container_width=True):
-                db.set_status(conn, int(r["id"]), "skipped", "Skipped in dashboard")
+                set_status(int(r["id"]), "skipped", "Skipped in dashboard")
                 st.rerun()
 
 # ------------------------------------------------------------------ applications
@@ -360,7 +364,7 @@ with tabs[4]:
             st.info(f"{len(changed)} status change(s) not saved yet.")
             if st.button("💾 Save changes", type="primary"):
                 for _, r in changed.iterrows():
-                    db.set_status(conn, int(r["id"]), r["status"], "Changed in dashboard")
+                    set_status(int(r["id"]), r["status"], "Changed in dashboard")
                 st.rerun()
 
 # ------------------------------------------------------------------ explore
@@ -396,8 +400,63 @@ with tabs[5]:
         },
     )
 
-# ------------------------------------------------------------------ settings
+# ------------------------------------------------------------------ startups
 with tabs[6]:
+    comps = pd.DataFrame(
+        backend.companies(),
+        columns=["name", "city", "source", "ats", "slug", "open_jobs", "local_jobs", "checked_at"],
+    )
+    if comps.empty:
+        st.markdown(ui.empty_state("🏙️", "No startups checked yet",
+                                   "Click “Find BLR / HYD startups” in the sidebar. It checks the starter list in "
+                                   "config/startups.toml plus every company seen in Bangalore/Hyderabad job posts."),
+                    unsafe_allow_html=True)
+    else:
+        found = comps[comps["ats"].notna()]
+        st.markdown(
+            ui.kpi_grid([
+                ("Startups checked", len(comps), "starter list + companies from job posts", "🏙️", "#6366F1"),
+                ("With careers board", len(found), "searched automatically on Discover", "✅", "#10B981"),
+                ("Open jobs", int(found["open_jobs"].sum()), f"{int(found['local_jobs'].sum())} in India", "💼", "#3B82F6"),
+                ("Bangalore", int((found["city"].str.lower() == "bangalore").sum()), "with a board", "📍", "#F59E0B"),
+                ("Hyderabad", int((found["city"].str.lower() == "hyderabad").sum()), "with a board", "📍", "#14B8A6"),
+            ]),
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns([2, 3])
+        city_pick = c1.multiselect("City", sorted(x for x in comps["city"].dropna().unique() if x), key="st_city")
+        only_found = c2.toggle("Only startups with a careers board", value=True, key="st_found")
+        view = found if only_found else comps
+        if city_pick:
+            view = view[view["city"].isin(city_pick)]
+        board_url = {
+            "greenhouse": "https://job-boards.greenhouse.io/{}",
+            "lever": "https://jobs.lever.co/{}",
+            "ashby": "https://jobs.ashbyhq.com/{}",
+        }
+        view = view.assign(
+            board=[board_url[a].format(s) if isinstance(a, str) and a in board_url else None for a, s in zip(view["ats"], view["slug"], strict=True)],
+            checked_at=pd.to_datetime(view["checked_at"], errors="coerce", utc=True).dt.tz_convert(None),
+        )
+        st.dataframe(
+            view[["name", "city", "ats", "open_jobs", "local_jobs", "source", "checked_at", "board"]],
+            hide_index=True,
+            use_container_width=True,
+            height=520,
+            column_config={
+                "name": st.column_config.TextColumn("Startup", width="medium"),
+                "city": "City",
+                "ats": st.column_config.TextColumn("Careers system", width="small"),
+                "open_jobs": st.column_config.NumberColumn("Open jobs", width="small"),
+                "local_jobs": st.column_config.NumberColumn("In India", width="small"),
+                "source": st.column_config.TextColumn("Found via", width="small"),
+                "checked_at": st.column_config.DatetimeColumn("Checked", format="DD MMM"),
+                "board": st.column_config.LinkColumn("Board", display_text="Open ↗", width="small"),
+            },
+        )
+
+# ------------------------------------------------------------------ settings
+with tabs[7]:
     if not settings:
         st.markdown(ui.empty_state("⚙️", "No config yet", "Run: python -m jobagent init, then edit config/profile.toml."), unsafe_allow_html=True)
     else:
