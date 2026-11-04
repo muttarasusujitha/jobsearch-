@@ -1,0 +1,189 @@
+# Copy this file to config/profile.toml (or run `python -m jobagent init`) and fill it in.
+# Passwords are NEVER stored here. They are read from environment variables.
+
+[personal]
+first_name = "Your"
+last_name = "Name"
+email = "you@example.com"
+phone = "+91 9876543210"
+city = "Bangalore"
+country = "India"
+linkedin_url = "https://www.linkedin.com/in/your-profile"
+github_url = "https://github.com/your-user"
+portfolio_url = ""
+current_company = "Current Company"
+current_title = "Software Engineer"
+# Path is relative to this config file's folder, or absolute.
+resume_path = "resume.pdf"
+
+[preferences]
+# Job titles you want. A job title must match one of these to be considered.
+# Big companies use their own titles, e.g. Amazon "Software Development Engineer",
+# TCS/Infosys "Systems Engineer", Accenture "Application Developer". Add the ones you want.
+roles = ["Backend Developer", "Python Developer", "Software Engineer", "Software Development Engineer", "Application Developer"]
+# Use "Remote" to include remote jobs.
+locations = ["Bangalore", "Remote"]
+experience_years = 2
+# Every one of these must appear in the title or description.
+must_have_keywords = ["python"]
+# Each one found adds to the score.
+nice_to_have_keywords = ["django", "fastapi", "flask", "sql", "aws", "docker", "rest api"]
+# Skip the job if any of these appear in the title or description.
+exclude_keywords = ["unpaid", "commission only"]
+# Skip the job if any of these appear in the title.
+exclude_title_keywords = ["senior", "sr.", "lead", "principal", "staff", "manager", "intern"]
+exclude_companies = []
+# Jobs at these companies get +10 score (on any platform, including LinkedIn and Naukri).
+preferred_companies = [
+  "Google", "Microsoft", "Amazon", "Cisco", "Adobe", "IBM", "SAP", "Infosys", "Wipro",
+  "Tata Consultancy", "TCS", "Accenture", "Oracle", "Dell", "Intel", "Intuit",
+  "Capgemini", "Cognizant", "Deloitte", "Salesforce",
+]
+# true = skip jobs whose location doesn't match. false = just score them lower.
+strict_location = false
+# Allow jobs that ask for up to this many years more than you have.
+experience_tolerance = 1
+# Jobs scoring below this (0-100) are skipped.
+min_score = 50
+
+[limits]
+# true = matched jobs wait in the dashboard "Review queue" until you approve them.
+# false = matched jobs are applied to automatically.
+review_mode = true
+daily_max = 25
+per_platform_daily_max = 10
+# Random wait between applications, in seconds.
+min_delay_seconds = 25
+max_delay_seconds = 70
+
+# Answers to common screening questions. Questions the agent can't answer from
+# these rules are never guessed: the job is moved to "Needs attention" instead.
+[answers]
+notice_period_days = 30
+current_ctc = "6 LPA"
+current_ctc_number = 600000
+expected_ctc = "10 LPA"
+expected_ctc_number = 1000000
+authorized_to_work = true
+requires_sponsorship = false
+willing_to_relocate = true
+willing_to_work_onsite = true
+how_did_you_hear = "Job board"
+highest_education = "Bachelor's Degree"
+# For EEO questions (gender, race, veteran, disability): pick "decline to answer" when offered.
+decline_eeo_questions = true
+# Years to answer for a skill that isn't listed in [answers.skill_years] below.
+# Remove this line to send those questions to "Needs attention" instead.
+unknown_skill_years = 0
+
+# Answers for "How many years of experience do you have with X?"
+[answers.skill_years]
+python = 2
+django = 1
+sql = 2
+aws = 1
+
+# Your own rules, checked before the built-in ones. `pattern` is a case-insensitive regex.
+[[answers.custom]]
+pattern = "gender"
+answer = "Prefer not to say"
+
+[[answers.custom]]
+pattern = "date of birth|dob"
+answer = "01/01/2000"
+
+[cover_letter]
+# Available placeholders: {first_name} {last_name} {title} {company} {experience_years} {current_title}
+template = """Hi {company} team,
+
+I'm excited to apply for the {title} role. I have {experience_years} years of experience as a {current_title}, working mainly with Python, APIs and databases, and I'd love to bring that to {company}.
+
+Thanks for your time,
+{first_name} {last_name}"""
+
+[platforms]
+enabled = ["greenhouse", "lever", "ashby", "workday", "successfactors", "amazon", "linkedin", "naukri", "wellfound"]
+
+# Company career sites. To find which system a company uses, open its careers page,
+# click any job's Apply button and look at the address bar:
+#   boards.greenhouse.io/<token> or job-boards.greenhouse.io/<token>  -> greenhouse
+#   jobs.lever.co/<slug>                                              -> lever
+#   jobs.ashbyhq.com/<name>                                           -> ashby
+#   <tenant>.wdN.myworkdayjobs.com/<Site>                             -> workday
+# Discovery logs a warning if a name is wrong, so it's safe to try.
+
+[platforms.workday]
+# Paste the URL of the company's job list. Each Workday site needs its own account:
+# run `python -m jobagent login workday` once to create/sign in to all of them.
+sites = [
+  { url = "https://accenture.wd103.myworkdayjobs.com/AccentureCareers", company = "Accenture" },
+  { url = "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site", company = "Salesforce" },
+  { url = "https://adobe.wd5.myworkdayjobs.com/external_experienced", company = "Adobe" },
+  { url = "https://dell.wd1.myworkdayjobs.com/External", company = "Dell Technologies" },
+  # Intel's host (intel.wd1) is confirmed; the site name "External" is a guess.
+  # If discovery warns about it, open Intel's careers page, click Apply and copy the URL.
+  { url = "https://intel.wd1.myworkdayjobs.com/External", company = "Intel" },
+]
+# Pages of 20 results per role searched.
+max_pages = 3
+# Max job descriptions fetched per site per run (one request each).
+max_details_per_site = 60
+
+[platforms.successfactors]
+# Base URL of the company's careers site. Each site needs its own account:
+# run `python -m jobagent login successfactors` once.
+sites = [
+  { url = "https://jobs.sap.com", company = "SAP" },
+  { url = "https://careers.wipro.com", company = "Wipro" },
+  { url = "https://careers.hcltech.com", company = "HCLTech" },
+  { url = "https://careers.ey.com", company = "EY" },
+]
+max_pages = 2
+max_details_per_site = 40
+
+[platforms.amazon]
+# Finds and matches Amazon jobs automatically; you apply by hand (link shown in
+# "Needs attention"), because Amazon applications often include an online assessment.
+max_pages = 2
+
+[platforms.ashby]
+# Names from URLs like https://jobs.ashbyhq.com/<name>
+companies = []
+
+[platforms.greenhouse]
+# Board tokens from URLs like https://job-boards.greenhouse.io/<token>
+boards = ["razorpay", "postman", "groww"]
+
+[platforms.lever]
+# Company slugs from URLs like https://jobs.lever.co/<slug>
+companies = ["cred", "meesho"]
+
+[platforms.linkedin]
+# true = only Easy Apply jobs (applied automatically).
+# false = also find jobs that apply on the company's own site (Google, Microsoft, IBM,
+# TCS, Infosys...). Those go to "Needs attention" with the link so you can apply by hand.
+easy_apply_only = true
+# r86400 = past 24 hours, r604800 = past week
+posted_within = "r604800"
+max_pages = 2
+# Used for LinkedIn searches when your location is "Remote".
+remote_country = "India"
+
+[platforms.naukri]
+# Only jobs posted in the last N days
+job_age_days = 7
+max_pages = 2
+
+[platforms.wellfound]
+max_pages = 1
+
+[email]
+# Gmail: turn on 2-step verification, create an App Password, and put it in the
+# JOBAGENT_EMAIL_PASSWORD environment variable.
+enabled = true
+imap_host = "imap.gmail.com"
+username = "you@example.com"
+password_env = "JOBAGENT_EMAIL_PASSWORD"
+folder = "INBOX"
+lookback_days = 14
+max_messages = 300
