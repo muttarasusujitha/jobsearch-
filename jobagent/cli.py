@@ -86,6 +86,14 @@ def cmd_run(args: argparse.Namespace) -> None:
     log = logging.getLogger("jobagent")
     while True:
         settings = load_settings(args.config)  # re-read so config edits apply without restarting
+        if args.auto_apply:
+            # Same as review_mode = false: matched jobs are applied to without waiting for approval.
+            settings.raw.setdefault("limits", {})["review_mode"] = False
+            # Also release jobs already waiting in the review queue.
+            conn = db.connect()
+            for row in db.jobs_with_status(conn, "matched"):
+                db.set_status(conn, row["id"], "approved", "Auto-approved (--auto-apply)")
+            conn.close()
         steps = [
             ("discover", run_discovery, dict(platforms=args.platform, headless=args.headless)),
             ("apply", run_applications, dict(platforms=args.platform, headless=args.headless, dry_run=args.dry_run)),
@@ -173,6 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(s)
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--loop-minutes", type=int, default=0, help="Repeat every N minutes")
+    s.add_argument("--auto-apply", action="store_true", help="Apply to matched jobs without review (overrides review_mode)")
     s.set_defaults(func=cmd_run)
 
     s = sub.add_parser("status", help="Show counts per status")

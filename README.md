@@ -53,10 +53,13 @@ python -m jobagent track           # update statuses from email
 python -m jobagent status          # counts per status
 
 python -m jobagent run --loop-minutes 180      # do all three every 3 hours
+python -m jobagent run --auto-apply --loop-minutes 1   # no review, new round 1 minute after the last ends
 python -m jobagent match --rescore             # re-score after changing preferences
 ```
 
 Use `--platform linkedin` (repeatable) to limit a command to certain sites.
+
+To apply fully automatically, double-click `start.bat` (Windows) or run `./start.sh` (Mac/Linux). It runs `run --auto-apply --loop-minutes 1`: matched jobs, including any already in the review queue, are applied to without approval, and `daily_max` / `per_platform_daily_max` still cap the total. Keep the window open while it runs.
 
 ## How each job moves
 
