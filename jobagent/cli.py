@@ -94,9 +94,12 @@ def cmd_run(args: argparse.Namespace) -> None:
             for row in db.jobs_with_status(conn, "matched"):
                 db.set_status(conn, row["id"], "approved", "Auto-approved (--auto-apply)")
             conn.close()
+        apply_step = ("apply", run_applications, dict(platforms=args.platform, headless=args.headless, dry_run=args.dry_run))
         steps = [
+            # Apply to jobs already approved first, so a slow discovery round doesn't hold them back.
+            apply_step,
             ("discover", run_discovery, dict(platforms=args.platform, headless=args.headless)),
-            ("apply", run_applications, dict(platforms=args.platform, headless=args.headless, dry_run=args.dry_run)),
+            apply_step,
             ("track", run_tracker, {}),
         ]
         for step, fn, kwargs in steps:

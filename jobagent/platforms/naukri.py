@@ -40,6 +40,8 @@ SEL = {
     "send": [".sendMsg", "div.send", "button:has-text('Save')", "[class*='sendMsg']"],
 }
 SUCCESS_TEXT = ["successfully applied", "you have applied", "applied successfully", "application sent"]
+# Optional chatbot questions offer a "Skip" chip; using it is safer than guessing an answer.
+SKIP_RE = re.compile(r"^\s*skip\b", re.I)
 
 
 def _slug(text: str) -> str:
@@ -154,6 +156,17 @@ class Naukri(Platform):
             return ApplyResult("needs_attention", "CAPTCHA required")
         return ApplyResult("needs_attention", "No confirmation after clicking Apply")
 
+    def _skip(self, bot: "Locator") -> bool:
+        """Click the "Skip" chip if this question is optional. Returns True if clicked."""
+        chips = bot.locator(SEL["chips"])
+        for i in range(chips.count()):
+            chip = chips.nth(i)
+            if SKIP_RE.match(chip.inner_text(timeout=1000) or ""):
+                chip.click()
+                log.info("  skipped optional chatbot question")
+                return True
+        return False
+
     def _chatbot(self, page: "Page", answerer: Answerer) -> ApplyResult:
         bot = page.locator(SEL["chatbot"]).first
         last_question = ""
@@ -175,17 +188,24 @@ class Naukri(Platform):
                 options = [t.strip() for t in radios.all_inner_texts()]
                 ans = answerer.answer(Question(question, "radio", options, True))
                 if ans is None:
+                    if self._skip(bot):
+                        continue
                     return ApplyResult("needs_attention", f"Unanswered: {question[:120]}")
                 radios.nth(options.index(ans)).click()
             elif chips.count():
                 options = [t.strip() for t in chips.all_inner_texts()]
-                ans = answerer.answer(Question(question, "select", options, True))
+                answerable = [o for o in options if not SKIP_RE.match(o)]
+                ans = answerer.answer(Question(question, "select", answerable, True))
                 if ans is None:
+                    if self._skip(bot):
+                        continue
                     return ApplyResult("needs_attention", f"Unanswered: {question[:120]}")
                 chips.nth(options.index(ans)).click()
             else:
                 ans = answerer.answer(Question(question, "text", None, True))
                 if ans is None:
+                    if self._skip(bot):
+                        continue
                     return ApplyResult("needs_attention", f"Unanswered: {question[:120]}")
                 box = bot.locator(SEL["text_input"]).last
                 box.click()
