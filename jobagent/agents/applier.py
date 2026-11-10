@@ -42,9 +42,13 @@ def run_applications(
     remaining_today = daily_max - db.applied_count_since(conn, since)
     if limit is not None:
         remaining_today = min(remaining_today, limit)
+    waiting = sum(len(rows) for rows in by_platform.values())
     if remaining_today <= 0:
-        log.info("Daily limit of %d reached. Nothing to do.", daily_max)
+        log.info("Daily limit of %d reached. %d approved jobs wait until tomorrow.", daily_max, waiting)
+        stats["waiting_daily_limit"] = waiting
         return dict(stats)
+    if not waiting:
+        log.info("No approved jobs to apply to on: %s", ", ".join(sorted(enabled)))
 
     attempted = 0
     for name, rows in by_platform.items():
@@ -60,11 +64,16 @@ def run_applications(
         platform_left = per_platform_max - db.applied_count_since(conn, since, name)
         if platform_left <= 0:
             log.info("%s: per-platform daily limit reached", name)
+            stats[f"waiting_{name}_daily_limit"] += len(rows)
             continue
         with BrowserSession(adapter.profile, headless=headless) as session:
             page = session.new_page()
             if adapter.login_url and not adapter.is_logged_in(page):
-                log.error("%s: not logged in. Run: python -m jobagent login %s", name, name)
+                log.error(
+                    "%s: not logged in, so %d approved jobs were skipped. Run: python -m jobagent login %s",
+                    name, len(rows), name,
+                )
+                stats[f"skipped_{name}_not_logged_in"] += len(rows)
                 continue
             for row in rows:
                 if attempted >= remaining_today or platform_left <= 0:
