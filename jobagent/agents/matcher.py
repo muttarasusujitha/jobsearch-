@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from typing import Any
 
 from .. import db
 from ..config import Settings
@@ -13,16 +14,18 @@ from ..models import JobPosting
 log = logging.getLogger(__name__)
 
 
-def row_to_posting(row: sqlite3.Row) -> JobPosting:
+def row_to_posting(row: sqlite3.Row | dict[str, Any]) -> JobPosting:
+    """Build a JobPosting from a database row or an API/bus job dict."""
+    data = dict(row)
     return JobPosting(
-        platform=row["platform"],
-        external_id=row["external_id"],
-        url=row["url"],
-        title=row["title"],
-        company=row["company"],
-        location=row["location"],
-        description=row["description"],
-        apply_url=row["apply_url"],
+        platform=data["platform"],
+        external_id=data["external_id"],
+        url=data["url"],
+        title=data["title"],
+        company=data.get("company") or "",
+        location=data.get("location") or "",
+        description=data.get("description") or "",
+        apply_url=data.get("apply_url"),
     )
 
 

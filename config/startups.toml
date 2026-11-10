@@ -1,0 +1,32 @@
+# Starter list for the startup finder (python -m jobagent find-startups, or the
+# startups service). Add or remove names freely; the city is only a label.
+#
+# You don't need to know which careers system a company uses: the finder checks
+# Greenhouse, Lever and Ashby automatically. Companies that only hire through their
+# own website or LinkedIn won't be found here, but their LinkedIn/Naukri jobs are.
+#
+# The finder also checks every company it sees in Bangalore/Hyderabad job postings,
+# so this list is only a starting point.
+
+[cities]
+bangalore = [
+  "Razorpay", "CRED", "Zepto", "Swiggy", "Meesho", "Groww", "PhonePe", "Flipkart", "Zerodha",
+  "Ola", "Rapido", "ShareChat", "Licious", "Udaan", "Unacademy", "Postman", "Hasura", "InMobi",
+  "Glance", "Juspay", "Slice", "Jupiter", "Fi Money", "Khatabook", "smallcase", "Setu", "Cult.fit",
+  "Practo", "HealthifyMe", "Ultrahuman", "Ather Energy", "Simpl", "Niyo", "Open Financial",
+  "Rupeek", "Jar", "Zeta", "Yellow.ai", "Observe.AI", "Hevo Data", "Exotel", "Whatfix", "Leena AI",
+  "Sarvam AI", "Plum", "Acko", "Navi", "FamPay", "Scaler", "Apna", "Jumbotail", "MyGate", "Vymo",
+  "Kapture CX", "BrowserStack", "Atlan", "Uniphore", "Fyle", "Zluri", "CleverTap", "Sprinto",
+  "Toplyne", "HyperVerge", "Signzy", "Perfios", "Lentra", "Mobile Premier League",
+]
+hyderabad = [
+  "Darwinbox", "Keka", "Zenoti", "HighRadius", "Skyroot Aerospace", "Dhruva Space", "StanPlus",
+  "AutoRABIT", "Ekincare", "Practically",
+]
+
+# Optional: pin a company to a known board when its board name is unusual.
+# [[startup]]
+# name = "Example Startup"
+# city = "Bangalore"
+# ats = "lever"          # greenhouse | lever | ashby
+# slug = "example-careers"

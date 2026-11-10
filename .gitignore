@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 data/
 data-demo/
+.env
 config/profile.toml
 config/*.pdf
 config/*.docx

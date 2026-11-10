@@ -80,6 +80,32 @@ def required_experience(text: str) -> int | None:
     return min(found) if found else None
 
 
+# City-wide matching: a job in any of these areas counts as that city.
+CITY_ALIASES: dict[str, tuple[str, ...]] = {
+    "bangalore": (
+        "bangalore", "bengaluru", "banglore", "blr", "karnataka", "whitefield", "electronic city",
+        "koramangala", "hsr layout", "indiranagar", "bellandur", "marathahalli", "sarjapur",
+        "outer ring road", "manyata", "yeshwanthpur", "jayanagar", "jp nagar", "hebbal", "yelahanka",
+        "btm layout", "domlur", "mg road", "embassy tech village", "bagmane",
+    ),
+    "hyderabad": (
+        "hyderabad", "hyd", "secunderabad", "telangana", "hitec city", "hitech city", "gachibowli",
+        "madhapur", "kondapur", "financial district", "nanakramguda", "kukatpally", "begumpet",
+        "banjara hills", "jubilee hills", "manikonda", "raidurg", "uppal", "shamshabad", "kokapet",
+    ),
+}
+CITY_ALIASES["bengaluru"] = CITY_ALIASES["bangalore"]
+
+
+def city_of(text: str) -> str | None:
+    """'bangalore' / 'hyderabad' if the text names an area in that city, else None."""
+    low = (text or "").lower()
+    for city in ("bangalore", "hyderabad"):
+        if any(re.search(r"(?<![a-z])" + re.escape(a) + r"(?![a-z])", low) for a in CITY_ALIASES[city]):
+            return city
+    return None
+
+
 def location_matches(job_location: str, description: str, wanted: list[str]) -> bool:
     if not wanted:
         return True
@@ -90,7 +116,10 @@ def location_matches(job_location: str, description: str, wanted: list[str]) -> 
         if p == "remote":
             if any(w in loc for w in REMOTE_WORDS) or (not loc and any(w in head for w in REMOTE_WORDS)):
                 return True
-        elif p and (p in loc or (p == "bangalore" and "bengaluru" in loc) or (p == "bengaluru" and "bangalore" in loc)):
+        elif p in CITY_ALIASES:
+            if any(re.search(r"(?<![a-z])" + re.escape(a) + r"(?![a-z])", loc) for a in CITY_ALIASES[p]):
+                return True
+        elif p and p in loc:
             return True
     return False
 

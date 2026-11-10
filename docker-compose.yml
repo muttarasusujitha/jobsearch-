@@ -1,0 +1,111 @@
+# Job Agent as microservices.
+#   docker compose up -d --build
+#   Dashboard   http://localhost:8501
+#   API docs    http://localhost:8000/docs
+#   Browser     http://localhost:6080/vnc.html   (watch the agent, log in, solve CAPTCHAs)
+#
+# All ports are bound to 127.0.0.1, so only this computer can reach them.
+# Secrets come from a .env file next to this one (see .env.example).
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: jobagent-app
+  restart: unless-stopped
+  environment: &env
+    REDIS_URL: redis://redis:6379/0
+    JOBAGENT_API_URL: http://api:8000
+    JOBAGENT_API_TOKEN: ${JOBAGENT_API_TOKEN:-}
+    TZ: ${TZ:-Asia/Kolkata}
+  volumes:
+    - ./config:/app/config:ro
+  depends_on:
+    redis:
+      condition: service_healthy
+    api:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    <<: *app
+    command: ["python", "-m", "services.api"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./config:/app/config:ro
+      - app-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 10
+
+  discovery:
+    <<: *app
+    command: ["python", "-m", "services.discovery"]
+
+  matcher:
+    <<: *app
+    command: ["python", "-m", "services.matcher"]
+
+  tracker:
+    <<: *app
+    command: ["python", "-m", "services.tracker"]
+    environment:
+      <<: *env
+      JOBAGENT_EMAIL_PASSWORD: ${JOBAGENT_EMAIL_PASSWORD:-}
+
+  startups:
+    <<: *app
+    command: ["python", "-m", "services.startups"]
+
+  scheduler:
+    <<: *app
+    command: ["python", "-m", "services.scheduler"]
+
+  browser:
+    build:
+      context: .
+      dockerfile: docker/browser.Dockerfile
+    image: jobagent-browser
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      <<: *env
+      BROWSER_HEADLESS: "false"
+      VNC_PASSWORD: ${VNC_PASSWORD:-}
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ./config:/app/config:ro
+      - browser-profiles:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  dashboard:
+    <<: *app
+    command: ["python", "-m", "streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+    ports:
+      - "127.0.0.1:8501:8501"
+
+volumes:
+  redis-data:
+  app-data:
+  browser-profiles:

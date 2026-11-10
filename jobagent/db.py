@@ -62,6 +62,20 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_job ON events (job_id);
 
+-- Companies the startup finder has checked. ats/slug are NULL when no public board was found.
+CREATE TABLE IF NOT EXISTS companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    city TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'seed',
+    ats TEXT,
+    slug TEXT,
+    open_jobs INTEGER NOT NULL DEFAULT 0,
+    local_jobs INTEGER NOT NULL DEFAULT 0,
+    checked_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS processed_emails (
     message_id TEXT PRIMARY KEY,
     job_id INTEGER REFERENCES jobs (id) ON DELETE SET NULL,
@@ -182,3 +196,60 @@ def status_counts(conn: sqlite3.Connection) -> dict[str, int]:
     for row in conn.execute("SELECT status, COUNT(*) AS n FROM jobs GROUP BY status"):
         counts[row["status"]] = row["n"]
     return counts
+
+
+def company_key(name: str) -> str:
+    """Normalised company name used to de-duplicate ('Razorpay Software Pvt Ltd' -> 'razorpay software')."""
+    import re
+
+    name = re.sub(r"\b(private|pvt|ltd|limited|inc|llc|llp|technologies|technology|labs|india)\b\.?", " ", name.lower())
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", name).split())
+
+
+def upsert_company(conn: sqlite3.Connection, c: dict) -> None:
+    key = company_key(c["name"])
+    if not key:
+        return
+    conn.execute(
+        """INSERT INTO companies (name, name_key, city, source, ats, slug, open_jobs, local_jobs, checked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(name_key) DO UPDATE SET
+             city = CASE WHEN excluded.city != '' THEN excluded.city ELSE companies.city END,
+             ats = excluded.ats, slug = excluded.slug, open_jobs = excluded.open_jobs,
+             local_jobs = excluded.local_jobs, checked_at = excluded.checked_at""",
+        (c["name"], key, c.get("city", ""), c.get("source", "seed"), c.get("ats"), c.get("slug"),
+         int(c.get("open_jobs", 0)), int(c.get("local_jobs", 0)), c.get("checked_at") or now_iso()),
+    )
+    conn.commit()
+
+
+def companies(conn: sqlite3.Connection, found_only: bool = False) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM companies"
+    if found_only:
+        sql += " WHERE ats IS NOT NULL"
+    return conn.execute(sql + " ORDER BY local_jobs DESC, name").fetchall()
+
+
+def recently_checked(conn: sqlite3.Connection, days: int = 14) -> set[str]:
+    from datetime import timedelta
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    return {r[0] for r in conn.execute("SELECT name_key FROM companies WHERE checked_at >= ?", (since,))}
+
+
+def company_candidates(conn: sqlite3.Connection, cities: list[str], limit: int = 200) -> list[dict]:
+    """Companies seen in job postings located in `cities` that the finder hasn't checked recently."""
+    from .matching import city_of
+
+    skip = recently_checked(conn)
+    seen: dict[str, dict] = {}
+    for row in conn.execute("SELECT company, location FROM jobs WHERE company != '' ORDER BY id DESC LIMIT 5000"):
+        city = city_of(row["location"])
+        if not city or (cities and city not in cities):
+            continue
+        key = company_key(row["company"])
+        if key and key not in skip and key not in seen:
+            seen[key] = {"name": row["company"], "city": city.title(), "source": "jobs"}
+        if len(seen) >= limit:
+            break
+    return list(seen.values())
